@@ -60,3 +60,51 @@ class EncoderBlock(nn.Module):
 
         out = inputs + self.dropout(mlp_out, deterministic=not train)
         return self.layernorm2(out)
+
+
+class TransformerEncoder(nn.Module):
+    model_dim: int
+    n_layers: int
+    n_heads: int
+    dim_feedforward: int
+    dropout_rate: float = 0.0
+
+    def setup(self) -> None:
+        self.encoder_stack = [
+            EncoderBlock(
+                self.model_dim, self.n_heads, self.dim_feedforward, self.dropout_rate
+            )
+            for _ in range(self.n_layers)
+        ]
+
+    def __call__(
+        self, inputs: Array, train: bool = True, attention_mask: Array | None = None
+    ) -> Any:
+        out = inputs
+        for block in self.encoder_stack:
+            out = block(out, train=train, attention_mask=attention_mask)
+
+        return out
+
+    def get_attention_maps(
+        self, inputs: Array, train: bool = True, attention_mask: Array | None = None
+    ) -> list[Array]:
+        """Returns the encoder attention maps for each encoder block.
+
+        Args:
+            inputs (Array): input array of shape (batch_size, seq_len, model_dim)
+            train (bool, optional): wether to run model in train model.
+            attention_mask (Array | None, optional): attention mask to apply to attention logits.
+
+        Returns:
+            list[Array]: a list of length (n_heads) containing the output maps.
+        """
+
+        attention_maps = []
+        out = inputs
+        for block in self.encoder_stack:
+            _, attn_weights = block.mha(out, train=train, attention_mask=attention_mask)
+            attention_maps.append(attn_weights)
+            out = block(out, train=train, attention_mask=attention_mask)
+
+        return attention_maps

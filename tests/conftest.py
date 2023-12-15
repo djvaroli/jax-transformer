@@ -6,8 +6,9 @@ import pytest
 @dataclass
 class TestConfig:
     batch_size: int = 2
-    seq_len: int = 10
-    model_dim: int = 32
+    seq_len: int = 4
+    model_dim: int = 8
+    n_layers: int = 2
     n_heads: int = 2
     random_seed = 42
 
