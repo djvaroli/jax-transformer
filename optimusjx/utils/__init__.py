@@ -1,1 +1,1 @@
-from .mask import lookahead_mask
+from .mask import create_lookahead_mask
