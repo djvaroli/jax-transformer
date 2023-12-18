@@ -12,7 +12,6 @@ from jax import numpy as jnp
 # Yay!
 
 
-@jax.vmap
 def _scaled_dot_product_attention_with_logits(
     q: Array,
     k: Array,
@@ -25,12 +24,12 @@ def _scaled_dot_product_attention_with_logits(
         * function is vectorized over the batch dimension using jax.vmap.
 
     Args:
-        q (Array): query matrix with shape (seq_len, Dk).
-        k (Array): keys matrix with shape (seq_len, Dk).
-        v (Array): values matrix with shape (seq_len, Dv).
-        mask (Optional[Array], optional): padding mask with shape (..., seq_len, seq_len). Defaults to None.
+        q (Array): query matrix with shape (..., seq_len, Dk).
+        k (Array): keys matrix with shape (..., seq_len, Dk).
+        v (Array): values matrix with shape (..., seq_len, Dv).
+        mask (Optional[Array], optional): mask with shape (..., seq_len). Defaults to None.
             If specified, expected to be an additive mask, i.e. positions to be masked are set to -inf.
-            and positions to be attended to are set to 0.
+            and all others set to 0.
 
     Returns:
         Tuple[Array, Array]:
@@ -38,11 +37,7 @@ def _scaled_dot_product_attention_with_logits(
             Array: attention weights with shape (seq_len, seq_len).
             Array: attention logits with shape (seq_len, seq_len).
     """
-    seq_len, vector_dim = q.shape[-2:]
-
-    if mask is None:
-        # mask will be broadcasted appropriately
-        mask = jnp.zeros((seq_len, seq_len))
+    vector_dim = q.shape[-1]
 
     # will ensure that variance of dot product remains sigma^4 ~= 1 since we init with sigma = 1
     # see dotprod-step-by-step.ipynb for more details
@@ -54,7 +49,7 @@ def _scaled_dot_product_attention_with_logits(
 
     # apply additive mask
     # values to be masked are set to -inf, values to be attended to are set to 0
-    attention_logits = attention_logits + mask
+    attention_logits = attention_logits + mask if mask is not None else attention_logits
 
     # apply softmax element-wise along the rows
     attention_weights = jax.nn.softmax(attention_logits, axis=-1)
@@ -77,9 +72,9 @@ def scaled_dot_product_attn(
         q (Array): query matrix with shape (b, seq_len, Dk).
         k (Array): keys matrix with shape (b, seq_len, Dk).
         v (Array): values matrix with shape (seq_len, Dv).
-        mask (Optional[Array], optional): padding mask with shape (..., seq_len, seq_len). Defaults to None.
+        mask (Optional[Array], optional): mask with shape (..., seq_len, seq_len). Defaults to None.
             If specified, expected to be an additive mask, i.e. positions to be masked are set to -inf.
-            and positions to be attended to are set to 0.
+            and all others set to 0.
 
     Returns:
         Tuple[Array, Array]:
@@ -114,27 +109,8 @@ class MultiHeadedAttention(nn.Module):
         self.qkv_dense = nn.Dense(3 * self.model_dim)
         self.out_dense = nn.Dense(self.model_dim)
 
-    def _expand_mask(self, mask: Array) -> Array:
-        """Ensures that mask is 4D by expanding dimensions until that is the case."""
-        if mask.ndim < 2:
-            raise ValueError("Mask must be at least 2D")
-
-        # expected shape (b, seq_len, seq_len), expand to (b, 1, seq_len, seq_len)
-        if mask.ndim == 3:
-            mask = jnp.expand_dims(mask, 1)
-
-        # expected_shape (seq_len, seq_len), expand to (1, 1, seq_len, seq_len)
-        while mask.ndim < 4:
-            mask = mask.unsqueeze(0)
-
-        return mask
-
     def __call__(
-        self,
-        inputs: Array,
-        train: bool = True,
-        attention_mask: Array | None = None
-        # TODO: add padding mask
+        self, inputs: Array, train: bool = True, attention_mask: Array | None = None
     ) -> tuple[Array, Array]:
         """Perform attention over an input array.
 
@@ -142,6 +118,8 @@ class MultiHeadedAttention(nn.Module):
             inputs (Array): input of array of shape (batch_size, seq_len, model_dim)
             train (bool, optional): wether to operate in train mode. Defaults to True.
             attention_mask (Array | None, optional): additive attention mask. Defaults to None.
+                Positions to be attended to should be set to 0, positions to be masked should be set to -inf.
+                If specified expected to be a 4D tensor.
 
         Returns:
             tuple[Array, Array]: attention array and attention weights.
@@ -164,9 +142,9 @@ class MultiHeadedAttention(nn.Module):
         q, k, v = jnp.array_split(qkv, 3, axis=-1)
 
         # attn shape (b, n_heads, seq_len, 3 * model_dim // n_heads // 3)
-        # TODO: pass in mask
+
         if attention_mask is not None:
-            attention_mask = self._expand_mask(attention_mask)
+            assert attention_mask.ndim == 4, "Expected a 4D attention mask in MHA."
 
         attn, attn_weights = scaled_dot_product_attn(q, k, v, attention_mask)
 
