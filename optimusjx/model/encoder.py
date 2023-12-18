@@ -31,14 +31,17 @@ class EncoderBlock(nn.Module):
 
     def __call__(
         self, inputs: Array, train: bool = True, attention_mask: Array | None = None
-    ):
+    ) -> Array:
         """Forward pass through the Transformer encoder block.
 
         Args:
             inputs (Array): array of shape (batch_size, seq_len, model_dim)
             train (bool, optional): whether to run in train mode. Defaults to `True`.
-            attention_mask (Array | None, optional): mask to be applied to attention logits.
-                Defaults to None.
+            attention_mask (Array | None, optional): an additive mask to be applied to attention logits.
+                Defaults to None. Positions to be masked are set to -inf, and positions to be kept are set to 0.
+
+        Returns:
+            Array: output array of shape (batch_size, seq_len, model_dim)
         """
 
         # out will have shape (b, seq_len, model_dim)
@@ -79,7 +82,19 @@ class TransformerEncoder(nn.Module):
 
     def __call__(
         self, inputs: Array, train: bool = True, attention_mask: Array | None = None
-    ) -> Any:
+    ) -> Array:
+        """Forward pass through the Transformer encoder.
+
+        Args:
+            inputs (Array): array of shape (batch_size, seq_len, model_dim)
+            train (bool, optional): whether to run in train mode. Defaults to `True`.
+            attention_mask (Array | None, optional): an additive mask to be applied to the
+                attention logits. Positions to be masked are set to -inf, and positions to be kept
+                are set to 0. Defaults to None.
+
+        Returns:
+            Array: output array of shape (batch_size, seq_len, model_dim)
+        """
         out = inputs
         for block in self.encoder_stack:
             out = block(out, train=train, attention_mask=attention_mask)
@@ -94,7 +109,8 @@ class TransformerEncoder(nn.Module):
         Args:
             inputs (Array): input array of shape (batch_size, seq_len, model_dim)
             train (bool, optional): wether to run model in train model.
-            attention_mask (Array | None, optional): attention mask to apply to attention logits.
+            attention_mask (Array | None, optional): an additive mask to apply to attention logits.
+                Positions to be masked are set to -inf, and positions to be kept are set to 0. Defaults to None.
 
         Returns:
             list[Array]: a list of length (n_heads) containing the output maps.
