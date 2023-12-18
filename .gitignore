@@ -4,3 +4,6 @@ __pycache__/*
 
 # breakfast
 *.egg*
+
+# VSCode files
+.vscode
