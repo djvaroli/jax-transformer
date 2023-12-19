@@ -30,12 +30,26 @@ class TransformerLM(nn.Module):
         Args:
             inputs (Array): an array of shape (batch_size, seq_len)
             train (bool, optional): Whether to run in train mode. Defaults to True.
-            lookahead_mask (Array | None, optional): an array of shape (seq_len, seq_len). Defaults to None.
-            padding_mask (Array | None, optional): an array of shape (batch_size, seq_len). Defaults to None.
+            lookahead_mask (Array | None, optional): an array of shape (seq_len, seq_len) or
+                (..., ..., seq_len, seq_len). Defaults to None. If specified and is 2D,
+                will be expanded to 4D tensor, otherwise passed to MHA as is.
+            padding_mask (Array | None, optional): an array of shape (batch_size, seq_len) or
+                (batch_size, ..., ..., seq_len). Defaults to None. If specified and is 2D,
+                will be expanded to 4D tensor, otherwise passed to MHA as is.
 
         Returns:
             Array: an array of shape (batch_size, seq_len, vocab_size)
         """
+        if padding_mask.ndim not in [2, 4]:
+            raise ValueError(
+                f"Padding mask must be a 2D or 4D tensor. Got {padding_mask.ndim}D"
+            )
+
+        if lookahead_mask.ndim not in [2, 4]:
+            raise ValueError(
+                f"Lookahead mask must be a 2D or 4D tensor. Got {lookahead_mask.ndim}D"
+            )
+
         # create the combined attention mask
         attention_mask = None
 
@@ -46,10 +60,12 @@ class TransformerLM(nn.Module):
             seq_len = inputs.shape[1]
             lookahead_mask = jax.numpy.zeros((seq_len, seq_len))
 
-        # TODO: this does not support user specifying a mask per-sample or per-head
-        # expand them to 4D arrays
-        padding_mask = padding_mask[:, None, None, :]
-        lookahead_mask = lookahead_mask[None, None, :, :]
+        # expand them to 4D arrays if necessary
+        if padding_mask.ndim < 4:
+            padding_mask = padding_mask[:, None, None, :]
+
+        if lookahead_mask.ndim < 4:
+            lookahead_mask = lookahead_mask[None, None, :, :]
 
         # combine into a single attention mask
         attention_mask = padding_mask + lookahead_mask
