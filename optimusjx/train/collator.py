@@ -38,9 +38,8 @@ class CollatorForCausalLM:
         input_batch = collate_for_clm(examples, key="input_ids")
         labels = input_batch.copy()
 
-        # when using torch.CrossEntropyLoss, -100 class is ignored
-        # set padding tokens to
-        labels = labels.at[labels == self.tokenizer.pad_token_id].set(-100)
+        # special_tokens_mask
+        special_tokens_mask = labels == self.tokenizer.pad_token_id
 
         # the model will handle re-shaping the masks as needed, keep them 2D here
         lookahead_mask = create_lookahead_mask(input_batch.shape[-1])
@@ -51,4 +50,5 @@ class CollatorForCausalLM:
             labels=labels,
             lookahead_mask=lookahead_mask,
             padding_mask=padding_mask,
+            special_tokens_mask=special_tokens_mask,
         )
