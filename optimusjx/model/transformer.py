@@ -1,3 +1,5 @@
+from warnings import warn
+
 import jax
 from flax import linen as nn
 from jax import Array
@@ -16,6 +18,11 @@ class TransformerLM(nn.Module):
     input_dropout_rate: float = 0.1
     max_len: int = 5000
     name: str = "transformer-language-model"
+    _debug: bool = False
+
+    def toggle_debug(self) -> bool:
+        self._debug = not self._debug
+        return self._debug
 
     @nn.compact
     def __call__(
@@ -24,6 +31,7 @@ class TransformerLM(nn.Module):
         train: bool = True,
         lookahead_mask: Array | None = None,
         padding_mask: Array | None = None,
+        **kwargs,
     ) -> Array:
         """Forward pass of TransformerLM
 
@@ -37,15 +45,22 @@ class TransformerLM(nn.Module):
                 (batch_size, ..., ..., seq_len). Defaults to None. If specified and is 2D,
                 will be expanded to 4D tensor, otherwise passed to MHA as is.
 
+        Kwargs:
+            Any key-word arguments not excplicitly defined will be ignored.
+
         Returns:
             Array: an array of shape (batch_size, seq_len, vocab_size)
         """
-        if padding_mask.ndim not in [2, 4]:
+        if len(kwargs):
+            for key in kwargs.keys():
+                warn(f"Transformer recieved unknown keyword argument {key} - ignoring")
+
+        if padding_mask is not None and padding_mask.ndim not in [2, 4]:
             raise ValueError(
                 f"Padding mask must be a 2D or 4D tensor. Got {padding_mask.ndim}D"
             )
 
-        if lookahead_mask.ndim not in [2, 4]:
+        if lookahead_mask is not None and lookahead_mask.ndim not in [2, 4]:
             raise ValueError(
                 f"Lookahead mask must be a 2D or 4D tensor. Got {lookahead_mask.ndim}D"
             )
@@ -72,9 +87,18 @@ class TransformerLM(nn.Module):
 
         # embed inputs
         out = nn.Embed(self.vocab_size, self.model_dim)(inputs)
+        if self._debug:
+            print(out, "embedding\n")
+
         out = PositionalEncoding(self.model_dim, self.max_len)(out)
+        if self._debug:
+            print(out, "positional encoding\n")
         out = nn.Dense(self.model_dim)(out)
+        if self._debug:
+            print(out, "dense-1\n")
         out = nn.Dropout(rate=self.input_dropout_rate)(out, deterministic=not train)
+        if self._debug:
+            print(out, "dropout-1\n")
 
         # pass through Transformer encoder
         out = TransformerEncoder(
@@ -84,9 +108,13 @@ class TransformerLM(nn.Module):
             self.num_encoder_layers,
             self.dropout_rate,
         )(out, train=train, attention_mask=attention_mask)
+        if self._debug:
+            print(out, "transformer\n")
 
         # more efficient to re-use the embedding matrix as final dense layer
         # out = jax.numpy.matmul(out, jax.numpy.transpose(embedding.embedding, (1, 0)))
         out = nn.Dense(self.vocab_size)(out)
+        if self._debug:
+            print(out, "lm-head\n")
 
         return out
