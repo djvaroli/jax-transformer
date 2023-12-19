@@ -86,7 +86,8 @@ class TransformerLM(nn.Module):
         attention_mask = padding_mask + lookahead_mask
 
         # embed inputs
-        out = nn.Embed(self.vocab_size, self.model_dim)(inputs)
+        embedding = nn.Embed(self.vocab_size, self.model_dim)
+        out = embedding(inputs)
         if self._debug:
             print(out, "embedding\n")
 
@@ -112,8 +113,8 @@ class TransformerLM(nn.Module):
             print(out, "transformer\n")
 
         # more efficient to re-use the embedding matrix as final dense layer
-        # out = jax.numpy.matmul(out, jax.numpy.transpose(embedding.embedding, (1, 0)))
-        out = nn.Dense(self.vocab_size)(out)
+        out = jax.numpy.matmul(out, jax.numpy.transpose(embedding.embedding, (1, 0)))
+        # out = nn.Dense(self.vocab_size)(out)
         if self._debug:
             print(out, "lm-head\n")
 
