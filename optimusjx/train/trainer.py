@@ -1,5 +1,6 @@
 import os
 from typing import Callable, Iterable, Literal
+from copy import deepcopy 
 
 import jax
 import numpy as np
@@ -84,10 +85,13 @@ class LMTrainer:
             **inputs,
         ) -> tuple[float, jax.random.PRNGKey]:
             rng, dropout_apply_rng = jax.random.split(rng, 2)
-
+            
             # expected shape (batch_size, seq_len)
             labels: Array = inputs.pop("labels")
 
+            # special token mask indicates which positions are padding
+            special_token_mask = inputs.pop("special_token_mask", None)
+            
             # expected shape (batch_size, seq_len, vocab_size)
             logits: Array = self.model.apply(
                 {"params": params},
@@ -105,11 +109,12 @@ class LMTrainer:
             shift_logits = shift_logits.reshape(-1, shift_logits.shape[-1])
             shift_labels = shift_labels.reshape(-1)
 
-            # compute loss
-            loss = optax.softmax_cross_entropy_with_integer_labels(
+            # loss batch can contain nans (e.g. if an index is set to -100)
+            loss_batch = optax.softmax_cross_entropy_with_integer_labels(
                 shift_logits, shift_labels
-            ).mean()
+            )
 
+            loss = jax.numpy.nanmean(loss_batch)
             return loss, rng
 
         return compute_batch_loss
@@ -123,9 +128,6 @@ class LMTrainer:
         """
         # Initialize model
         rng, init_rng, dropout_init_rng = jax.random.split(self.rng, 3)
-
-        if "labels" in example_batch:
-            _ = example_batch.pop("labels")
 
         params = self.model.init(
             {"params": init_rng, "dropout": dropout_init_rng},
@@ -190,14 +192,15 @@ class LMTrainer:
         self,
         train_loader: Iterable[JaxBatch],
         wandb_run: wandb_sdk.wandb_run.Run | None = None,
-    ):
+    ):        
         with tqdm.tqdm(total=len(train_loader), leave=False) as pbar:
             for batch in train_loader:
                 self.state, self.rng, loss = self.train_step(
                     self.state, self.rng, **batch
                 )
-                self.history["train_loss"].append(loss.item())
-                pbar.set_postfix(loss=loss.item())
+                self.history['train_loss'].append(loss.item())
+                
+                pbar.set_postfix(loss=loss)
                 pbar.update(1)
                 if wandb_run is not None:
                     wandb_run.log({"train_loss": loss.item()})
@@ -207,7 +210,7 @@ class LMTrainer:
 
         wandb_run = None
         if self.report_to == "wandb":
-            wandb_run = wandb.init(project="bubmle-jax")
+            wandb_run = wandb.init(project="bumble-jax")
 
         with tqdm.tqdm(total=n_epochs) as pbar:
             for epoch in range(n_epochs):
