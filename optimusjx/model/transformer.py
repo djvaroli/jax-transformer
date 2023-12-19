@@ -85,7 +85,8 @@ class TransformerLM(nn.Module):
             self.dropout_rate,
         )(out, train=train, attention_mask=attention_mask)
 
-        # pass through final dense layer
+        # more efficient to re-use the embedding matrix as final dense layer
+        # out = jax.numpy.matmul(out, jax.numpy.transpose(embedding.embedding, (1, 0)))
         out = nn.Dense(self.vocab_size)(out)
 
         return out
