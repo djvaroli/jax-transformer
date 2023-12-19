@@ -1,13 +1,15 @@
 import os
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Literal
 
 import jax
 import numpy as np
 import optax
 import tqdm
+import wandb
 from flax.core.scope import FrozenVariableDict
 from flax.training import train_state
 from jax import Array
+from wandb import wandb_sdk
 
 from optimusjx.model import TransformerLM
 
@@ -24,6 +26,7 @@ class LMTrainer:
         lr: float = 1e-3,
         warmup: int = 100,
         seed: int = 42,
+        report_to: Literal["wandb"] | None = None,
     ):
         """
         Inputs:
@@ -58,6 +61,7 @@ class LMTrainer:
         self.eval_step = eval_step
 
         self.history = {"train_loss": [], "val_loss": []}
+        self.report_to = report_to
 
     def get_loss_function(
         self,
@@ -182,7 +186,11 @@ class LMTrainer:
 
         return jax.jit(train_step), jax.jit(val_step)
 
-    def train_epoch(self, train_loader: Iterable[JaxBatch]):
+    def train_epoch(
+        self,
+        train_loader: Iterable[JaxBatch],
+        wandb_run: wandb_sdk.wandb_run.Run | None = None,
+    ):
         with tqdm.tqdm(total=len(train_loader), leave=False) as pbar:
             for batch in train_loader:
                 self.state, self.rng, loss = self.train_step(
@@ -191,14 +199,20 @@ class LMTrainer:
                 self.history["train_loss"].append(loss.item())
                 pbar.set_postfix(loss=loss.item())
                 pbar.update(1)
+                if wandb_run is not None:
+                    wandb_run.log({"train_loss": loss.item()})
 
     def train(self, n_epochs: int, train_loader: Iterable[JaxBatch]):
         per_epoch_steps = len(train_loader)
 
+        wandb_run = None
+        if self.report_to == "wandb":
+            wandb_run = wandb.init(project="bubmle-jax")
+
         with tqdm.tqdm(total=n_epochs) as pbar:
             for epoch in range(n_epochs):
                 pbar.set_description(f"Epoch {epoch + 1} / {n_epochs}")
-                self.train_epoch(train_loader)
+                self.train_epoch(train_loader, wandb_run=wandb_run)
                 epoch_losses = self.history["train_loss"][
                     epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
                 ]
