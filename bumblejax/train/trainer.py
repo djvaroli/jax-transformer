@@ -12,7 +12,7 @@ from flax.training import train_state
 from jax import Array
 from wandb import wandb_sdk
 
-from optimusjx.model import TransformerLM
+from bumblejax.model import TransformerLM
 
 from .collator import JaxBatch
 

@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from optimusjx.train.collator import CollatorForCausalLM
+from bumblejax.train.collator import CollatorForCausalLM
 
 
 @dataclass

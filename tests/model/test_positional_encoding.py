@@ -1,7 +1,7 @@
 import jax
 from conftest import TestConfig
 
-from optimusjx.model import PositionalEncoding
+from bumblejax.model import PositionalEncoding
 
 test_config = TestConfig()
 

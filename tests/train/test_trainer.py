@@ -3,8 +3,8 @@ import torch
 from conftest import TestConfig
 from torch.utils.data import DataLoader, Dataset
 
-from optimusjx.model import TransformerLM
-from optimusjx.train import CollatorForCausalLM, LMTrainer
+from bumblejax.model import TransformerLM
+from bumblejax.train import CollatorForCausalLM, LMTrainer
 
 
 class RandomIntDataset(Dataset):

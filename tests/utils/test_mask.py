@@ -2,7 +2,7 @@ import pytest
 from conftest import TestConfig
 from jax import numpy as jnp
 
-from optimusjx.utils.mask import create_lookahead_mask, create_padding_mask
+from bumblejax.utils.mask import create_lookahead_mask, create_padding_mask
 
 test_config = TestConfig()
 

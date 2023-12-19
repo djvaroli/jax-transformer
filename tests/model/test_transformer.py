@@ -2,7 +2,7 @@ import jax
 import pytest
 from conftest import TestConfig
 
-from optimusjx.model import TransformerLM
+from bumblejax.model import TransformerLM
 
 test_config = TestConfig()
 

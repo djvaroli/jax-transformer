@@ -2,7 +2,7 @@ import jax
 import pytest
 from conftest import TestConfig
 
-from optimusjx.model import EncoderBlock, TransformerEncoder
+from bumblejax.model import EncoderBlock, TransformerEncoder
 
 test_config = TestConfig()
 
