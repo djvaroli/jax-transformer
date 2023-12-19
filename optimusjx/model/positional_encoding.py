@@ -16,7 +16,7 @@ class PositionalEncoding(nn.Module):
 
         # value depends on position and on the index within the position vector
         # all even rows have sin(f(position)) and all odd rows have cos(f(position))
-        positions = np.arange(0, self.max_len, dtype=np.float32)
+        positions = np.arange(0, self.max_len, dtype=np.float32)[:, None]
 
         # the div_term only depends on the index within a given vector (is invariant to position in the sequence)
         # only need array with model_dim // 2 entries since same value in every pair of entries.
