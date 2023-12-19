@@ -10,3 +10,6 @@ __pycache__/*
 
 # wandb log files
 wandb*
+
+# notebook checkpoints
+.ipynb_checkpoints*
