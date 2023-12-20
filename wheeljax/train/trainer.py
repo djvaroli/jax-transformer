@@ -94,7 +94,7 @@ class LMTrainer:
             labels: Array = inputs.pop("labels")
 
             # special token mask indicates which positions are padding
-            # TODO: utilize mask when computing loss
+            # expected shape (batch_size, seq_len)
             special_token_mask = inputs.pop("special_token_mask", None)
 
             # expected shape (batch_size, seq_len, vocab_size)
@@ -104,6 +104,10 @@ class LMTrainer:
                 train=train,
                 rngs={"dropout": dropout_apply_rng},
             )
+
+            # mask out logits for special tokens
+            if special_token_mask is not None:
+                logits = logits * special_token_mask
 
             # shift by one to predict next token
             shift_logits = logits[:, :-1, :]
