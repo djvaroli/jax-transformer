@@ -63,10 +63,16 @@ def test_clm_trainer():
         trainer = LMTrainer(
             model,
             example_batch=test_batch,
-            max_iters=101,
-            warmup=100,
+            max_iters=2,
+            warmup=1,
             checkpoint_dir=tmpdir,
         )
         trainer.train(1, train_loader)
         trainer.save_model()
         trainer.load_model()
+
+    model.generate(
+        trainer.state.params,
+        input_tokens=test_batch["inputs"][:1, :],
+        max_new_tokens=2,
+    )

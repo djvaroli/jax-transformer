@@ -1,6 +1,8 @@
+import time
 from warnings import warn
 
 import jax
+import tqdm
 from flax import linen as nn
 from jax import Array
 
@@ -119,3 +121,58 @@ class TransformerLM(nn.Module):
             print(out, "lm-head\n")
 
         return out
+
+    def generate(
+        self,
+        params,
+        input_tokens: Array,
+        max_new_tokens: int = 20,
+        stop_token_id: int | None = None,
+        temperature: float = 1.0,
+        rng_key: jax.random.KeyArray | None = None,
+    ) -> Array:
+        """Generate an output sequence given an input sequence
+
+        Args:
+            params: model parameters.
+            input_tokens (Array): an array of shape (1, ...) corresponding to an initial sequence.
+            max_new_tokens (int): maximum number of new tokens to generate.
+            stop_token_id (int, optional): token id to stop generation at. Defaults to None.
+            temperature (float, optional): controls the randomness when sampling tokens. Defaults to 1.0.
+                Higher values will increase randomness, lower values will decrease randomness.
+            rng_key (jax.random.KeyArray, optional): random number generator key. Defaults to None.
+                If None, then a new key will be generated, using the current time as a seed.
+
+        Returns:
+            Array: an array of shape (1, ...) corresponding to the generated sequence.
+        """
+        tokens = input_tokens
+        if tokens.shape[0] != 1:
+            raise ValueError("Method implemented for a single input sequence only.")
+
+        rng_key = rng_key or jax.random.PRNGKey(int(time.time()))
+
+        with tqdm.tqdm(total=max_new_tokens, desc="Generating") as pbar:
+            for _ in range(max_new_tokens):
+                if stop_token_id is not None and tokens[0, -1] == stop_token_id:
+                    break
+
+                next_token_logits = self.apply(
+                    {"params": params},
+                    tokens,
+                    padding_mask=None,
+                    lookahead_mask=None,
+                    train=False,
+                )[:, -1:, :]
+
+                next_token_logits = next_token_logits / temperature
+                next_token = jax.random.categorical(rng_key, next_token_logits)
+
+                tokens = jax.numpy.concatenate([tokens, next_token], axis=-1)
+                rng_key, _ = jax.random.split(rng_key, 2)
+                pbar.update(1)
+
+                # clean up memory
+                del next_token_logits
+
+        return tokens
