@@ -61,7 +61,8 @@ class LMTrainer:
         self.train_step = train_step
         self.eval_step = eval_step
 
-        self.history = {"train_loss": [], "val_loss": []}
+        self.history = {"train": {"loss": [], "perplexity": []}}
+
         self.report_to = report_to
 
     def get_loss_function(
@@ -73,23 +74,21 @@ class LMTrainer:
             bool,
             dict[str, Array],
         ],
-        tuple[float, jax.random.PRNGKey],
+        tuple[Array, Array, jax.random.PRNGKey],
     ]:
-        # Return a function that calculates the loss for a batch
-        # To be implemented in a task specific sub-class
-
         def compute_batch_loss(
             params: FrozenVariableDict | dict[str, Array],
             rng: jax.random.PRNGKey,
             train: bool,
             **inputs,
-        ) -> tuple[float, jax.random.PRNGKey]:
+        ) -> tuple[Array, Array, jax.random.PRNGKey]:
             rng, dropout_apply_rng = jax.random.split(rng, 2)
 
             # expected shape (batch_size, seq_len)
             labels: Array = inputs.pop("labels")
 
             # special token mask indicates which positions are padding
+            # TODO: utilize mask when computing loss
             special_token_mask = inputs.pop("special_token_mask", None)
 
             # expected shape (batch_size, seq_len, vocab_size)
@@ -115,7 +114,9 @@ class LMTrainer:
             )
 
             loss = jax.numpy.nanmean(loss_batch)
-            return loss, rng
+            ppl = jax.numpy.exp(loss)
+
+            return loss, (ppl, rng)
 
         return compute_batch_loss
 
@@ -165,26 +166,29 @@ class LMTrainer:
                 bool,
                 dict[str, Array],
             ],
-            tuple[float, jax.random.PRNGKey],
+            tuple[Array, Array, jax.random.PRNGKey],
         ] = self.get_loss_function()
 
         def train_step(
             state: train_state.TrainState, rng: jax.random.PRNGKey, **inputs: Array
-        ) -> tuple[train_state.TrainState, jax.random.PRNGKey, float]:
+        ) -> tuple[train_state.TrainState, jax.random.PRNGKey, Array, Array]:
             # TODO: return perplexity here maybe
             loss_fn = lambda params: compute_batch_loss(
                 params, rng, train=True, **inputs
             )
             ret, grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params)
-            loss, rng = ret
-            state = state.apply_gradients(grads=grads)
-            return state, rng, loss
 
+            # ret is a tuple(loss, (aux_data,))
+            loss, ppl, rng = ret[0], *ret[1]
+            state = state.apply_gradients(grads=grads)
+            return state, rng, loss, ppl
+
+        # TODO: not working and not implemented
         def val_step(rng: jax.random.PRNGKey, **inputs: Array):
-            loss, rng = compute_batch_loss(
+            loss, ppl, rng = compute_batch_loss(
                 self.state.params, rng, train=False, **inputs
             )
-            return loss, rng
+            return loss, ppl, rng
 
         return jax.jit(train_step), jax.jit(val_step)
 
@@ -195,15 +199,18 @@ class LMTrainer:
     ):
         with tqdm.tqdm(total=len(train_loader), leave=False) as pbar:
             for batch in train_loader:
-                self.state, self.rng, loss = self.train_step(
+                self.state, self.rng, loss, ppl = self.train_step(
                     self.state, self.rng, **batch
                 )
-                self.history["train_loss"].append(loss.item())
+                self.history["train"]["loss"].append(loss.item())
+                self.history["train"]["perplexity"].append(ppl.item())
 
-                pbar.set_postfix(loss=loss)
+                pbar.set_postfix(loss=loss.item(), perplexity=ppl.item())
                 pbar.update(1)
                 if wandb_run is not None:
-                    wandb_run.log({"train_loss": loss.item()})
+                    wandb_run.log(
+                        {"train/loss": loss.item(), "train/perplexity": ppl.item()}
+                    )
 
     def train(self, n_epochs: int, train_loader: Iterable[JaxBatch]):
         per_epoch_steps = len(train_loader)
@@ -216,9 +223,13 @@ class LMTrainer:
             for epoch in range(n_epochs):
                 pbar.set_description(f"Epoch {epoch + 1} / {n_epochs}")
                 self.train_epoch(train_loader, wandb_run=wandb_run)
-                epoch_losses = self.history["train_loss"][
+                epoch_losses = self.history["train"]["loss"][
+                    epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
+                ]
+                epoch_perplexity = self.history["train"]["perplexity"][
                     epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
                 ]
                 mean_epoch_loss = np.mean(epoch_losses)
-                pbar.set_postfix(loss=mean_epoch_loss)
+                mean_epoch_perplexity = np.mean(epoch_perplexity)
+                pbar.set_postfix(loss=mean_epoch_loss, perplexity=mean_epoch_perplexity)
                 pbar.update(1)
