@@ -150,7 +150,9 @@ class TransformerLM(nn.Module):
         if tokens.shape[0] != 1:
             raise ValueError("Method implemented for a single input sequence only.")
 
-        rng_key = rng_key or jax.random.PRNGKey(int(time.time()))
+        rng_key = (
+            rng_key if rng_key is not None else jax.random.PRNGKey(int(time.time()))
+        )
 
         with tqdm.tqdm(total=max_new_tokens, desc="Generating") as pbar:
             for _ in range(max_new_tokens):

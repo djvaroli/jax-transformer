@@ -11,27 +11,41 @@ from wheeljax.train import CollatorForCausalLM, LMTrainer
 
 class RandomIntDataset(Dataset):
     def __init__(
-        self, seq_len: int, vocab_size: int, n_batches: int = 10, seed: int = 42
+        self,
+        seq_len: int,
+        vocab_size: int,
+        n_samples: int = 10,
+        seed: int = 42,
+        padding_amount: int | None = None,
     ) -> None:
         self.vocab_size = vocab_size
         self.seq_len = seq_len
-        self.n_batches = n_batches
+        self.n_samples = n_samples
         self.rng = jax.random.PRNGKey(seed)
 
+        # could create samples at __getitem__ call instead
+        self._data = jax.random.randint(
+            self.rng, (n_samples, seq_len), minval=0, maxval=self.vocab_size
+        )
+
+        self.padding_amount = padding_amount
+        if self.padding_amount is not None:
+            self.pad_token_id = self.vocab_size
+            self.vocab_size += 1
+
+            padding = jax.numpy.full(
+                (n_samples, self.padding_amount), self.pad_token_id
+            )
+            self._data = jax.numpy.concatenate([self._data, padding], axis=-1)
+
     def __getitem__(self, index) -> dict[str, list]:
-        if index > self.n_batches - 1:
+        if index > self.n_samples - 1:
             raise ValueError("Index larger than length.")
 
-        random_vocab = jax.random.randint(
-            self.rng, (self.seq_len,), minval=0, maxval=self.vocab_size
-        ).tolist()
-
-        self.rng, _ = jax.random.split(self.rng, 2)
-
-        return {"input_ids": random_vocab}
+        return {"input_ids": self._data[index, :].tolist()}
 
     def __len__(self) -> int:
-        return self.n_batches
+        return self.n_samples
 
 
 class TokenizerStandin:
@@ -44,7 +58,9 @@ test_config = TestConfig()
 
 def test_clm_trainer():
     """Tests basic operations of CLM Trainer."""
-    dataset = RandomIntDataset(test_config.seq_len, vocab_size=3, n_batches=2)
+    dataset = RandomIntDataset(
+        test_config.seq_len, vocab_size=3, n_samples=2, padding_amount=2
+    )
 
     rng = torch.Generator()
     rng.manual_seed(test_config.random_seed)
@@ -60,6 +76,7 @@ def test_clm_trainer():
     test_batch = next(iter(train_loader))
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        # TODO: test special tokens masking
         trainer = LMTrainer(
             model,
             example_batch=test_batch,

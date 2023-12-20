@@ -95,7 +95,7 @@ class LMTrainer:
 
             # special token mask indicates which positions are padding
             # expected shape (batch_size, seq_len)
-            special_token_mask = inputs.pop("special_token_mask", None)
+            special_tokens_mask = inputs.get("special_tokens_mask", None)
 
             # expected shape (batch_size, seq_len, vocab_size)
             logits: Array = self.model.apply(
@@ -105,23 +105,28 @@ class LMTrainer:
                 rngs={"dropout": dropout_apply_rng},
             )
 
-            # mask out logits for special tokens
-            if special_token_mask is not None:
-                logits = logits * special_token_mask
-
             # shift by one to predict next token
             shift_logits = logits[:, :-1, :]
             shift_labels = labels[:, 1:]
 
             # flatten logits and labels (bs, sl, vs) -> (bs * sl, vs)
             # and (bs, sl) -> (bs * sl, )
-            shift_logits = shift_logits.reshape(-1, shift_logits.shape[-1])
-            shift_labels = shift_labels.reshape(-1)
-
             # loss batch can contain nans (e.g. if an index is set to -100)
+            # shape (bs * sl, )
             loss_batch = optax.softmax_cross_entropy_with_integer_labels(
-                shift_logits, shift_labels
+                shift_logits.reshape(-1, shift_logits.shape[-1]),
+                shift_labels.reshape(-1),
             )
+
+            # do not count loss values at positions specified by special tokens mask
+            if special_tokens_mask is not None:
+                # slice to remove leading and end positions
+                special_tokens_mask = special_tokens_mask.reshape(-1)[1:-1].astype(
+                    jax.numpy.int32
+                )
+
+                # 1s mark special tokens, 0s other tokens. Flip to multiply by losses
+                loss_batch = loss_batch * jax.numpy.logical_not(special_tokens_mask)
 
             loss = jax.numpy.nanmean(loss_batch)
             ppl = jax.numpy.exp(loss)
@@ -140,9 +145,13 @@ class LMTrainer:
         # Initialize model
         rng, init_rng, dropout_init_rng = jax.random.split(self.rng, 3)
 
+        init_batch = example_batch.copy()
+        _ = init_batch.pop("special_tokens_mask", None)
+
+        # pop args that are not needed at init
         params = self.model.init(
             {"params": init_rng, "dropout": dropout_init_rng},
-            **example_batch,
+            **init_batch,
             train=True,
         )["params"]
 
@@ -200,7 +209,8 @@ class LMTrainer:
             )
             return loss, ppl, rng
 
-        return jax.jit(train_step), jax.jit(val_step)
+        # return jax.jit(train_step), jax.jit(val_step)
+        return train_step, val_step
 
     def train_epoch(
         self,
