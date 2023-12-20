@@ -1,3 +1,4 @@
+from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Iterable, Literal
 
@@ -93,10 +94,6 @@ class LMTrainer:
             # expected shape (batch_size, seq_len)
             labels: Array = inputs.pop("labels")
 
-            # special token mask indicates which positions are padding
-            # expected shape (batch_size, seq_len)
-            special_tokens_mask = inputs.get("special_tokens_mask", None)
-
             # expected shape (batch_size, seq_len, vocab_size)
             logits: Array = self.model.apply(
                 {"params": params},
@@ -111,23 +108,12 @@ class LMTrainer:
 
             # flatten logits and labels (bs, sl, vs) -> (bs * sl, vs)
             # and (bs, sl) -> (bs * sl, )
-            # loss batch can contain nans (e.g. if an index is set to -100)
-            # shape (bs * sl, )
             loss_batch = optax.softmax_cross_entropy_with_integer_labels(
                 shift_logits.reshape(-1, shift_logits.shape[-1]),
                 shift_labels.reshape(-1),
             )
 
-            # do not count loss values at positions specified by special tokens mask
-            if special_tokens_mask is not None:
-                # slice to remove leading and end positions
-                special_tokens_mask = special_tokens_mask.reshape(-1)[1:-1].astype(
-                    jax.numpy.int32
-                )
-
-                # 1s mark special tokens, 0s other tokens. Flip to multiply by losses
-                loss_batch = loss_batch * jax.numpy.logical_not(special_tokens_mask)
-
+            # loss batch can contain nans (e.g. if an index is set to -100)
             loss = jax.numpy.nanmean(loss_batch)
             ppl = jax.numpy.exp(loss)
 
@@ -145,13 +131,10 @@ class LMTrainer:
         # Initialize model
         rng, init_rng, dropout_init_rng = jax.random.split(self.rng, 3)
 
-        init_batch = example_batch.copy()
-        _ = init_batch.pop("special_tokens_mask", None)
-
         # pop args that are not needed at init
         params = self.model.init(
             {"params": init_rng, "dropout": dropout_init_rng},
-            **init_batch,
+            **example_batch,
             train=True,
         )["params"]
 
@@ -209,8 +192,7 @@ class LMTrainer:
             )
             return loss, ppl, rng
 
-        # return jax.jit(train_step), jax.jit(val_step)
-        return train_step, val_step
+        return jax.jit(train_step), jax.jit(val_step)
 
     def train_epoch(
         self,
@@ -219,6 +201,13 @@ class LMTrainer:
     ):
         with tqdm.tqdm(total=len(train_loader), leave=False) as pbar:
             for batch in train_loader:
+                # expected shape (batch_size, seq_len)
+                special_tokens_mask = batch.get("special_tokens_mask", None)
+
+                if special_tokens_mask is not None:
+                    # causes loss to be nan, we then compute nanmean loss
+                    batch["labels"] = batch["labels"].at[special_tokens_mask].set(-100)
+
                 self.state, self.rng, loss, ppl = self.train_step(
                     self.state, self.rng, **batch
                 )
@@ -239,7 +228,18 @@ class LMTrainer:
         if self.report_to == "wandb":
             import wandb
 
-            wandb_run = wandb.init(project="bumble-jax")
+            wandb_run = wandb.init(project="wheel-jax")
+            wandb_run.config.update(
+                dict(
+                    **asdict(self.model),
+                    n_epochs=n_epochs,
+                    max_iters=self.max_iters,
+                    lr=self.lr,
+                    warmup=self.warmup,
+                    seed=self.seed,
+                    checkpoint_dir=str(self.checkpoint_dir),
+                )
+            )
 
         with tqdm.tqdm(total=n_epochs) as pbar:
             for epoch in range(n_epochs):

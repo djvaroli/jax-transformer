@@ -11,7 +11,8 @@ from ..utils.mask import create_lookahead_mask, create_padding_mask
 class JaxBatch(UserDict):
     def device_put(self, device: str) -> "JaxBatch":
         for key, value in self.items():
-            self[key] = jax.device_put(value, device)
+            if isinstance(value, jax.Array):
+                self[key] = jax.device_put(value, device)
 
 
 def collate_for_clm(examples: list[dict[str, list]], key: str = "input_ids") -> Array:
@@ -31,24 +32,28 @@ def collate_for_clm(examples: list[dict[str, list]], key: str = "input_ids") -> 
 
 
 class CollatorForCausalLM:
-    def __init__(self, tokenizer):
+    def __init__(self, tokenizer, include_special_tokens_mask: bool = False):
         self.tokenizer = tokenizer
+        self.include_special_tokens_mask = include_special_tokens_mask
 
     def __call__(self, examples: list[dict[str, list]]) -> JaxBatch:
         input_batch = collate_for_clm(examples, key="input_ids")
         labels = input_batch.copy()
 
-        # special_tokens_mask
-        special_tokens_mask = labels == self.tokenizer.pad_token_id
-
         # the model will handle re-shaping the masks as needed, keep them 2D here
         lookahead_mask = create_lookahead_mask(input_batch.shape[-1])
         padding_mask = create_padding_mask(input_batch, self.tokenizer.pad_token_id)
 
-        return JaxBatch(
+        batch = JaxBatch(
             inputs=input_batch,
             labels=labels,
             lookahead_mask=lookahead_mask,
             padding_mask=padding_mask,
-            special_tokens_mask=special_tokens_mask,
         )
+
+        # only designates padding tokens for now
+        if self.include_special_tokens_mask:
+            special_tokens_mask = labels == self.tokenizer.pad_token_id
+            batch.update({"special_tokens_mask": special_tokens_mask})
+
+        return batch
