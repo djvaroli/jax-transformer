@@ -1,16 +1,13 @@
-import os
-from copy import deepcopy
+from pathlib import Path
 from typing import Callable, Iterable, Literal
 
 import jax
 import numpy as np
 import optax
 import tqdm
-import wandb
 from flax.core.scope import FrozenVariableDict
-from flax.training import train_state
+from flax.training import checkpoints, train_state
 from jax import Array
-from wandb import wandb_sdk
 
 from wheeljax.model import TransformerLM
 
@@ -27,6 +24,7 @@ class LMTrainer:
         lr: float = 1e-3,
         warmup: int = 100,
         seed: int = 42,
+        checkpoint_dir: str = "checkpoints",
         report_to: Literal["wandb"] | None = None,
     ):
         """
@@ -48,6 +46,10 @@ class LMTrainer:
         self.warmup = warmup
         self.seed = seed
         self.rng = jax.random.PRNGKey(self.seed)
+        self.checkpoint_dir = Path(checkpoint_dir).resolve()
+        if not self.checkpoint_dir.exists():
+            self.checkpoint_dir.mkdir(parents=True)
+
         # Create empty model. Note: no parameters yet
         self.model = model
 
@@ -61,7 +63,11 @@ class LMTrainer:
         self.train_step = train_step
         self.eval_step = eval_step
 
-        self.history = {"train": {"loss": [], "perplexity": []}}
+        # metric history tracker
+        self.history = {
+            "train": {"loss": [], "perplexity": []},
+            "val": {"loss": [], "perplexity": []},
+        }
 
         self.report_to = report_to
 
@@ -195,7 +201,7 @@ class LMTrainer:
     def train_epoch(
         self,
         train_loader: Iterable[JaxBatch],
-        wandb_run: wandb_sdk.wandb_run.Run | None = None,
+        wandb_run=None,
     ):
         with tqdm.tqdm(total=len(train_loader), leave=False) as pbar:
             for batch in train_loader:
@@ -217,6 +223,8 @@ class LMTrainer:
 
         wandb_run = None
         if self.report_to == "wandb":
+            import wandb
+
             wandb_run = wandb.init(project="bumble-jax")
 
         with tqdm.tqdm(total=n_epochs) as pbar:
@@ -233,3 +241,17 @@ class LMTrainer:
                 mean_epoch_perplexity = np.mean(epoch_perplexity)
                 pbar.set_postfix(loss=mean_epoch_loss, perplexity=mean_epoch_perplexity)
                 pbar.update(1)
+
+    def save_model(self, step: int = 0):
+        # Save current model at certain training iteration
+        checkpoints.save_checkpoint(
+            ckpt_dir=str(self.checkpoint_dir), target=self.state.params, step=step
+        )
+
+    def load_model(self):
+        params = checkpoints.restore_checkpoint(
+            str(self.checkpoint_dir), target=self.state.params
+        )
+        self.state = train_state.TrainState.create(
+            apply_fn=self.model.apply, params=params, tx=self.state.tx
+        )

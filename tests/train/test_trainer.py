@@ -1,3 +1,5 @@
+import tempfile
+
 import jax
 import torch
 from conftest import TestConfig
@@ -56,6 +58,15 @@ def test_clm_trainer():
     model = TransformerLM(vocab_size=dataset.vocab_size)
 
     test_batch = next(iter(train_loader))
-    trainer = LMTrainer(model, example_batch=test_batch, max_iters=101, warmup=100)
 
-    trainer.train(1, train_loader)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        trainer = LMTrainer(
+            model,
+            example_batch=test_batch,
+            max_iters=101,
+            warmup=100,
+            checkpoint_dir=tmpdir,
+        )
+        trainer.train(1, train_loader)
+        trainer.save_model()
+        trainer.load_model()
