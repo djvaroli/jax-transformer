@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from bumblejax.train.collator import CollatorForCausalLM
+from wheeljax.train.collator import CollatorForCausalLM
 
 
 @dataclass

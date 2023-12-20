@@ -1,7 +1,7 @@
 import jax
 from conftest import TestConfig
 
-from bumblejax.model import PositionalEncoding
+from wheeljax.model import PositionalEncoding
 
 test_config = TestConfig()
 

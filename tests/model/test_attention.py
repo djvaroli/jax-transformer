@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import pytest
 from conftest import TestConfig
 
-from bumblejax.model import MultiHeadedAttention, scaled_dot_product_attn
+from wheeljax.model import MultiHeadedAttention, scaled_dot_product_attn
 
 test_config = TestConfig()
 

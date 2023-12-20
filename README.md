@@ -1,9 +1,9 @@
-# Bumble Jax
+# Jax Transformer (wheel-jax)
 
 <img src="./assets/images/logo.png" width="200" height="200" />
 
-## The Name
-Transformers are both alien robots and a model architecture (and other things). My favorite transformer was always Bumblebee so I decided to name this project accordingly. I explored other options, such as `optimusjx` and `jaximus-prime` but `bumblejax` proved itself to be the much more elegant candidate.
+## Why Wheel Jax?
+Transformers are both alien robots and a model architecture (and other things too). Quite a few of the jax libraries use the "ax" sound in one form or another so I decided that a good name for this project would be some combination of something from "The Transformers" and  the "ax" sound. I tried a few ideas, "optimus-jax" which was hard to type out, "bumble jax" which wasn't a great name. Finally I found a character from "The Transformer" franchise that had the perfect name: "Wheeljack". WheelJax seemed like a natural fit.
 
 ## Installation
 

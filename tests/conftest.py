@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import pytest
 from jax import Array
 
-from bumblejax.utils.mask import create_lookahead_mask
+from wheeljax.utils.mask import create_lookahead_mask
 
 
 @dataclass
