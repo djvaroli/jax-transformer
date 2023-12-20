@@ -7,13 +7,19 @@ Transformers are both alien robots and a model architecture (and other things to
 
 ## Installation
 
-### CUDA
-Install dependencies:
+### Installing dependencies
+Create a python virtual environment (for example using Conda)
+```shell
+conda create -n wheeljax python=3.10 -y
+```
+
+Install dependencies
 ```shell
 pip install -e .
 ```
+
+**[CUDA Optional]** Install jax and jaxlib CUDA wheels
 #### CUDA12
-Install jax and jaxlib CUDA wheels
 ```shell
 pip install jax[cuda12_pip] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
@@ -23,3 +29,12 @@ pip install jax[cuda12_pip] -f https://storage.googleapis.com/jax-releases/jax_c
 pip install jax[cuda11_pip] -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 ```
 
+## Training
+**Note:** Some of this is still in progress and requires further testing, however favorable loss and perplexity trends do show through!
+
+See the following example notebook. 
+### GPT2-xxs
+* [Notebook](https://github.com/djvaroli/jax-transformer/blob/main/notebooks/train_transformer_gpt2.ipynb)
+
+<img src="./assets/images/loss-V100.png">
+<img src="./assets/images/ppl-V100.png">
