@@ -116,7 +116,7 @@ class TransformerLM(nn.Module):
 
         # more efficient to re-use the embedding matrix as final dense layer
         out = jax.numpy.matmul(out, jax.numpy.transpose(embedding.embedding, (1, 0)))
-        # out = nn.Dense(self.vocab_size)(out)
+
         if self._debug:
             print(out, "lm-head\n")
 
