@@ -15,4 +15,4 @@ wandb*
 .ipynb_checkpoints*
 
 # mac stuff
-.DS_store
+.DS_Store
