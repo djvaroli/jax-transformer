@@ -13,3 +13,6 @@ wandb*
 
 # notebook checkpoints
 .ipynb_checkpoints*
+
+# mac stuff
+.DS_store
