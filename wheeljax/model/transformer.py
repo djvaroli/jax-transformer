@@ -1,4 +1,5 @@
 import time
+from typing import Callable
 from warnings import warn
 
 import jax
@@ -6,6 +7,7 @@ import tqdm
 from flax import linen as nn
 from jax import Array
 
+from .attention import max_abs_scaling, no_scaling, sqrt_model_dim_scaling
 from .encoder import TransformerEncoder
 from .positional_encoding import PositionalEncoding
 
@@ -20,6 +22,7 @@ class TransformerLM(nn.Module):
     input_dropout_rate: float = 0.1
     max_len: int = 5000
     name: str = "transformer-language-model"
+    encoder_scaling_function: Callable[[Array], Array] = sqrt_model_dim_scaling
     _debug: bool = False
 
     def toggle_debug(self) -> bool:
@@ -110,6 +113,7 @@ class TransformerLM(nn.Module):
             self.dim_feedforward,
             self.num_encoder_layers,
             self.dropout_rate,
+            self.encoder_scaling_function,
         )(out, train=train, attention_mask=attention_mask)
         if self._debug:
             print(out, "transformer\n")
