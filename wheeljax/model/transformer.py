@@ -108,12 +108,12 @@ class TransformerLM(nn.Module):
 
         # pass through Transformer encoder
         out = TransformerEncoder(
-            self.model_dim,
-            self.num_heads,
-            self.dim_feedforward,
-            self.num_encoder_layers,
-            self.dropout_rate,
-            self.encoder_scaling_function,
+            model_dim=self.model_dim,
+            n_layers=self.num_encoder_layers,
+            n_heads=self.num_heads,
+            dim_feedforward=self.dim_feedforward,
+            dropout_rate=self.dropout_rate,
+            scaling_function=self.encoder_scaling_function,
         )(out, train=train, attention_mask=attention_mask)
         if self._debug:
             print(out, "transformer\n")
