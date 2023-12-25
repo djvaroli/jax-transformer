@@ -100,6 +100,7 @@ def scaled_dot_product_attn(
     k: Array,
     v: Array,
     mask: Optional[Array] = None,
+    scaling_function: Callable[[Array], Array] = sqrt_model_dim_scaling,
 ) -> Tuple[Array, Array]:
     """Performs scaled dot product attention for a single attention head.
 
@@ -110,6 +111,10 @@ def scaled_dot_product_attn(
         mask (Optional[Array], optional): mask with shape (..., seq_len, seq_len). Defaults to None.
             If specified, expected to be an additive mask, i.e. positions to be masked are set to -inf.
             and all others set to 0.
+        scaling_function (Callable[[Array], Array] | None, optional): function to apply to the
+            attention logits before applying softmax. Defaults to ``sqrt_model_dim_scaling``.
+            Should be a function that takes an array and returns an array of the same shape.
+            By default, the logits are scaled by the sqrt(model_dim).
 
     Returns:
         Tuple[Array, Array]:
@@ -130,10 +135,15 @@ class MultiHeadedAttention(nn.Module):
             the last dimension of the output array.
         n_heads (int): the number of attention heads. `model_dim` must be evenly divisible
             by `n_heads`.
+        scaling_function (Callable[[Array], Array], optional): function to apply to the
+            attention logits before applying softmax. Defaults to ``sqrt_model_dim_scaling``.
+            Should be a function that takes an array and returns an array of the same shape.
+            By default, the logits are scaled by the sqrt(model_dim).
     """
 
     model_dim: int
     n_heads: int
+    scaling_function: Callable[[Array], Array] = sqrt_model_dim_scaling
 
     def setup(self) -> None:
         if self.model_dim % self.n_heads != 0:
@@ -181,7 +191,9 @@ class MultiHeadedAttention(nn.Module):
         if attention_mask is not None:
             assert attention_mask.ndim == 4, "Expected a 4D attention mask in MHA."
 
-        attn, attn_weights = scaled_dot_product_attn(q, k, v, attention_mask)
+        attn, attn_weights = scaled_dot_product_attn(
+            q, k, v, attention_mask, self.scaling_function
+        )
 
         # attn shape (b, seq_len, n_heads, 3 * model_dim // n_heads // 3)
         attn = jnp.transpose(attn, (0, 2, 1, 3))
