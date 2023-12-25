@@ -1,10 +1,10 @@
-from typing import Any
+from typing import Any, Callable
 
 from flax import linen as nn
 from jax import Array
 from jax import numpy as jnp
 
-from .attention import MultiHeadedAttention
+from .attention import MultiHeadedAttention, sqrt_model_dim_scaling
 
 
 def is_dropout(layer: nn.Module) -> bool:
@@ -16,9 +16,12 @@ class EncoderBlock(nn.Module):
     n_heads: int
     dim_feedforward: int
     dropout_rate: float = 0.0
+    scaling_function: Callable[[Array], Array] = sqrt_model_dim_scaling
 
     def setup(self) -> None:
-        self.mha = MultiHeadedAttention(self.model_dim, self.n_heads)
+        self.mha = MultiHeadedAttention(
+            self.model_dim, self.n_heads, self.scaling_function
+        )
         self.mlp = [
             nn.Dense(self.dim_feedforward),
             nn.Dropout(self.dropout_rate),
@@ -71,11 +74,16 @@ class TransformerEncoder(nn.Module):
     n_heads: int
     dim_feedforward: int
     dropout_rate: float = 0.0
+    scaling_function: Callable[[Array], Array] = sqrt_model_dim_scaling
 
     def setup(self) -> None:
         self.encoder_stack = [
             EncoderBlock(
-                self.model_dim, self.n_heads, self.dim_feedforward, self.dropout_rate
+                self.model_dim,
+                self.n_heads,
+                self.dim_feedforward,
+                self.dropout_rate,
+                self.scaling_function,
             )
             for _ in range(self.n_layers)
         ]
