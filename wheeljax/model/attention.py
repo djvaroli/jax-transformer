@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import jax
 from flax import linen as nn
@@ -12,16 +12,50 @@ from jax import numpy as jnp
 # Yay!
 
 
+def sqrt_model_dim_scaling(x: Array) -> Array:
+    """Scales an array by sqrt(model_dim).
+
+    Args:
+        x (Array): input array.
+
+    Returns:
+        Array: scaled array.
+    """
+    return x / jnp.sqrt(x.shape[-1])
+
+
+def max_abs_scaling(x: Array) -> Array:
+    """Scales an array by the maximum absolute value.
+
+    Args:
+        x (Array): input array.
+
+    Returns:
+        Array: scaled array.
+    """
+    return x / jnp.max(jnp.abs(x))
+
+
+def no_scaling(x: Array) -> Array:
+    """Returns the input array.
+
+    Args:
+        x (Array): input array.
+
+    Returns:
+        Array: input array.
+    """
+    return x
+
+
 def _scaled_dot_product_attention_with_logits(
     q: Array,
     k: Array,
     v: Array,
     mask: Optional[Array] = None,
+    scaling_function: Callable[[Array], Array] = sqrt_model_dim_scaling,
 ) -> Tuple[Array, Array, Array]:
     """Performs scaled dot product attention for a single attention head.
-
-    Note:
-        * function is vectorized over the batch dimension using jax.vmap.
 
     Args:
         q (Array): query matrix with shape (..., seq_len, Dk).
@@ -30,6 +64,10 @@ def _scaled_dot_product_attention_with_logits(
         mask (Optional[Array], optional): mask with shape (..., seq_len). Defaults to None.
             If specified, expected to be an additive mask, i.e. positions to be masked are set to -inf.
             and all others set to 0.
+        scaling_function (Callable[[Array], Array] | None, optional): function to apply to the
+            attention logits before applying softmax. Defaults to ``sqrt_model_dim_scaling``.
+            Should be a function that takes an array and returns an array of the same shape.
+            By default, the logits are scaled by the sqrt(model_dim).
 
     Returns:
         Tuple[Array, Array]:
@@ -37,15 +75,12 @@ def _scaled_dot_product_attention_with_logits(
             Array: attention weights with shape (seq_len, seq_len).
             Array: attention logits with shape (seq_len, seq_len).
     """
-    vector_dim = q.shape[-1]
-
-    # will ensure that variance of dot product remains sigma^4 ~= 1 since we init with sigma = 1
-    # see dotprod-step-by-step.ipynb for more details
-    variance_scale_factor = 1 / jnp.sqrt(vector_dim)
-
     # compute QK^T, transpose K to get (Dk, seq_len)
     # output shape (..., seq_len, seq_len)
-    attention_logits = jnp.matmul(q, jnp.swapaxes(k, -2, -1)) * variance_scale_factor
+    attention_logits = jnp.matmul(q, jnp.swapaxes(k, -2, -1))
+
+    # scaling prevents variance from exploding
+    attention_logits = scaling_function(attention_logits)
 
     # apply additive mask
     # values to be masked are set to -inf, values to be attended to are set to 0
