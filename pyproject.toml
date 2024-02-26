@@ -1,8 +1,8 @@
 [tool.isort]
 profile = "black"
 multi_line_output = 3
-sections = ['FUTURE', 'STDLIB', 'JULIA', 'THIRDPARTY',  'FIRSTPARTY', 'LOCALFOLDER']
-known_first_party = ["optimusjx"]
+sections = ['FUTURE', 'STDLIB', 'THIRDPARTY',  'FIRSTPARTY', 'LOCALFOLDER']
+known_first_party = ["wheeljax"]
 
 [tool.black]
 line-length = 88
