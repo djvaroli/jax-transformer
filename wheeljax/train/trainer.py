@@ -15,7 +15,7 @@ from wheeljax.model import TransformerLM
 from .collator import JaxBatch
 
 
-# TODO: using LM-specific trainer for speed, need to create abstractions
+# TODO: using LM-specific trainer for development speed
 class LMTrainer:
     def __init__(
         self,
@@ -174,7 +174,6 @@ class LMTrainer:
         def train_step(
             state: train_state.TrainState, rng: jax.random.PRNGKey, **inputs: Array
         ) -> tuple[train_state.TrainState, jax.random.PRNGKey, Array, Array]:
-            # TODO: return perplexity here maybe
             loss_fn = lambda params: compute_batch_loss(
                 params, rng, train=True, **inputs
             )
@@ -185,14 +184,33 @@ class LMTrainer:
             state = state.apply_gradients(grads=grads)
             return state, rng, loss, ppl
 
-        # TODO: not working and not implemented
         def val_step(rng: jax.random.PRNGKey, **inputs: Array):
             loss, ppl, rng = compute_batch_loss(
                 self.state.params, rng, train=False, **inputs
             )
-            return loss, ppl, rng
+            return rng, loss, ppl
 
         return jax.jit(train_step), jax.jit(val_step)
+
+    def eval(self, val_loader: Iterable[JaxBatch], wandb_run=None):
+        with tqdm.tqdm(total=len(val_loader), leave=False) as pbar:
+            for batch in val_loader:
+                special_tokens_mask = batch.get("special_tokens_mask", None)
+
+                if special_tokens_mask is not None:
+                    # causes loss to be nan, we then compute nanmean loss
+                    batch["labels"] = batch["labels"].at[special_tokens_mask].set(-100)
+
+                self.rng, val_loss, val_ppl = self.val_step(self.rng, **batch)
+                self.history["val"]["loss"].append(val_loss.item())
+                self.history["val"]["perplexity"].append(val_ppl.item())
+
+                pbar.set_postfix(loss=val_loss.item(), perplexity=val_ppl.item())
+                pbar.update(1)
+                if wandb_run is not None:
+                    wandb_run.log(
+                        {"val/loss": val_loss.item(), "val/perplexity": val_ppl.item()}
+                    )
 
     def train_epoch(
         self,
@@ -221,7 +239,19 @@ class LMTrainer:
                         {"train/loss": loss.item(), "train/perplexity": ppl.item()}
                     )
 
-    def train(self, n_epochs: int, train_loader: Iterable[JaxBatch]):
+    def train(
+        self,
+        n_epochs: int,
+        train_loader: Iterable[JaxBatch],
+        val_loader: Iterable[JaxBatch] | None = None,
+    ):
+        """Trains and optionally evaluates the language model.
+
+        Args:
+            n_epochs (int): number of epochs to train for.
+            train_loader (Iterable[JaxBatch]): data loader containing the training data.
+            val_loader (Iterable[JaxBatch] | None, optional):
+        """
         per_epoch_steps = len(train_loader)
 
         wandb_run = None
@@ -245,15 +275,35 @@ class LMTrainer:
             for epoch in range(n_epochs):
                 pbar.set_description(f"Epoch {epoch + 1} / {n_epochs}")
                 self.train_epoch(train_loader, wandb_run=wandb_run)
-                epoch_losses = self.history["train"]["loss"][
+
+                if val_loader is not None:
+                    self.eval(val_loader, wandb_run=wandb_run)
+
+                epoch_train_losses = self.history["train"]["loss"][
                     epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
                 ]
-                epoch_perplexity = self.history["train"]["perplexity"][
+                epoch_train_perplexity = self.history["train"]["perplexity"][
                     epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
                 ]
-                mean_epoch_loss = np.mean(epoch_losses)
-                mean_epoch_perplexity = np.mean(epoch_perplexity)
-                pbar.set_postfix(loss=mean_epoch_loss, perplexity=mean_epoch_perplexity)
+                mean_epoch_train_loss = np.mean(epoch_train_losses)
+                mean_epoch_train_perplexity = np.mean(epoch_train_perplexity)
+
+                metrics = {
+                    "loss": mean_epoch_train_loss,
+                    "ppl": mean_epoch_train_perplexity,
+                }
+
+                if val_loader is not None:
+                    epoch_val_losses = self.history["val"]["loss"][
+                        epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
+                    ]
+                    epoch_val_perplexity = self.history["val"]["perplexity"][
+                        epoch * per_epoch_steps : (epoch + 1) * per_epoch_steps
+                    ]
+                    metrics["val_loss"] = np.mean(epoch_val_losses)
+                    metrics["val_ppl"] = np.mean(epoch_val_perplexity)
+
+                pbar.set_postfix(**metrics)
                 pbar.update(1)
 
     def save_model(self, step: int = 0):
