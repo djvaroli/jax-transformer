@@ -34,7 +34,10 @@ pip install jax[cuda11_pip] -f https://storage.googleapis.com/jax-releases/jax_c
 
 See the following example notebook. 
 ### GPT2-xxs
-* [Notebook](https://github.com/djvaroli/jax-transformer/blob/main/notebooks/train_transformer_gpt2.ipynb)
+[GPT2-like Decoder Language Model](https://github.com/djvaroli/jax-transformer/blob/main/notebooks/train_transformer_gpt2.ipynb)
 
-<img src="./assets/images/loss-V100.png">
-<img src="./assets/images/ppl-V100.png">
+#### Training Metrics
+<img src="./assets/images/train-metrics-V100.png">
+
+#### Validation Metrics (80/20 split)
+<img src="./assets/images/val-metrics-V100.png">

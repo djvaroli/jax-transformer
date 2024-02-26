@@ -122,7 +122,7 @@ def scaled_dot_product_attn(
             Array: attention weights with shape (b, ..., seq_len, seq_len).
     """
     result, attention_weights, _ = _scaled_dot_product_attention_with_logits(
-        q, k, v, mask
+        q, k, v, mask, scaling_function
     )
     return result, attention_weights
 
@@ -151,6 +151,8 @@ class MultiHeadedAttention(nn.Module):
                 "Model dimension must be evenly divisible by the number of attention heads."
             )
 
+        # note that coupling qkv has minor impact on distribution used to
+        # initialize weights since fan_in != fan_out
         self.qkv_dense = nn.Dense(3 * self.model_dim)
         self.out_dense = nn.Dense(self.model_dim)
 
